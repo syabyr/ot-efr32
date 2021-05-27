@@ -31,6 +31,8 @@
 # ==============================================================================
 if(BOARD_LOWERCASE STREQUAL "brd4151a")
     set(MCU "EFR32MG1P232F256GM48")
+elseif(BOARD_LOWERCASE STREQUAL "tradfri")
+    set(MCU "EFR32MG1P132F256IM32")
 else()
     message(FATAL_ERROR "
     BOARD=${BOARD} not supported.
@@ -38,7 +40,8 @@ else()
     Please provide a value for BOARD variable e.g BOARD=brd4151a.
     Currently supported:
     - brd4151a
-    ")
+    - tradfri
+   ")
 endif()
 
 list(APPEND OT_PLATFORM_DEFINES "${MCU}")
