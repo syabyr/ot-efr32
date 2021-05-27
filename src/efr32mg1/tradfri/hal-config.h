@@ -35,11 +35,11 @@
 // $[BUTTON]
 #define BSP_BUTTON_PRESENT (1)
 
-#define BSP_BUTTON0_PIN (6U)
-#define BSP_BUTTON0_PORT (gpioPortF)
+#define BSP_BUTTON0_PIN (14U)
+#define BSP_BUTTON0_PORT (gpioPortD)
 
-#define BSP_BUTTON1_PIN (7U)
-#define BSP_BUTTON1_PORT (gpioPortF)
+#define BSP_BUTTON1_PIN (15U)
+#define BSP_BUTTON1_PORT (gpioPortD)
 
 #define BSP_BUTTON_COUNT (2U)
 #define BSP_BUTTON_INIT                                                            \
@@ -152,11 +152,11 @@
 // $[LED]
 #define BSP_LED_PRESENT (1)
 
-#define BSP_LED0_PIN (4)
-#define BSP_LED0_PORT (gpioPortF)
+#define BSP_LED0_PIN (8)
+#define BSP_LED0_PORT (gpioPortD)
 
-#define BSP_LED1_PIN (5)
-#define BSP_LED1_PORT (gpioPortF)
+#define BSP_LED1_PIN (9)
+#define BSP_LED1_PORT (gpioPortD)
 
 #define HAL_LED_ENABLE \
     {                  \
@@ -251,13 +251,13 @@
 #define BSP_SERIAL_APP_CTS_PORT (gpioPortA)
 #define BSP_SERIAL_APP_CTS_LOC (30)
 
-#define BSP_SERIAL_APP_RX_PIN (1)
-#define BSP_SERIAL_APP_RX_PORT (gpioPortA)
-#define BSP_SERIAL_APP_RX_LOC (0)
+#define BSP_SERIAL_APP_RX_PIN (14)
+#define BSP_SERIAL_APP_RX_PORT (gpioPortB)
+#define BSP_SERIAL_APP_RX_LOC (8)
 
-#define BSP_SERIAL_APP_TX_PIN (0)
-#define BSP_SERIAL_APP_TX_PORT (gpioPortA)
-#define BSP_SERIAL_APP_TX_LOC (0)
+#define BSP_SERIAL_APP_TX_PIN (15)
+#define BSP_SERIAL_APP_TX_PORT (gpioPortB)
+#define BSP_SERIAL_APP_TX_LOC (10)
 
 #define BSP_SERIAL_APP_RTS_PIN (3)
 #define BSP_SERIAL_APP_RTS_PORT (gpioPortA)
@@ -268,7 +268,7 @@
 #define HAL_SERIAL_APP_RXSTOP (16)
 #define HAL_SERIAL_APP_RXSTART (16)
 #define HAL_SERIAL_APP_TX_QUEUE_SIZE (128)
-#define HAL_SERIAL_APP_FLOW_CONTROL (HAL_USART_FLOW_CONTROL_HWUART)
+#define HAL_SERIAL_APP_FLOW_CONTROL (HAL_USART_FLOW_CONTROL_NONE)
 // [SERIAL]$
 
 // $[SPIDISPLAY]
