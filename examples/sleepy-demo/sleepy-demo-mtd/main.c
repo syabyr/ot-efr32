@@ -37,6 +37,7 @@
 #include "hal_common.h"
 #include "openthread-system.h"
 #include "platform-efr32.h"
+#include <common/code_utils.hpp>
 #include <common/logging.hpp>
 #include <openthread-core-config.h>
 #include <openthread/cli.h>
@@ -55,7 +56,7 @@
 #define MULTICAST_ADDR "ff03::1"
 #define MULTICAST_PORT 123
 #define RECV_PORT 234
-#define SLEEPY_POLL_PERIOD_MS 5000
+#define SLEEPY_POLL_PERIOD_MS 2000
 #define MTD_MESSAGE "mtd button"
 #define FTD_MESSAGE "ftd button"
 
@@ -87,13 +88,32 @@ extern void otAppCliInit(otInstance *aInstance);
 // Variables
 static otInstance *        instance;
 static otUdpSocket         sMtdSocket;
-static otSockAddr          sMulticastSockAddr;
 static const ButtonArray_t sButtonArray[BSP_BUTTON_COUNT] = BSP_BUTTON_INIT;
 static bool                sButtonPressed                 = false;
 static bool                sRxOnIdleButtonPressed         = false;
-static bool                sLedOn                         = false;
 static bool                sAllowDeepSleep                = false;
 static bool                sTaskletsPendingSem            = true;
+
+void sleepyInit(void)
+{
+    otError error;
+    otCliOutputFormat("sleepy-demo-mtd started\r\n");
+
+    otLinkModeConfig config;
+    SuccessOrExit(error = otLinkSetPollPeriod(instance, SLEEPY_POLL_PERIOD_MS));
+
+    config.mRxOnWhenIdle = true;
+    config.mDeviceType   = 0;
+    config.mNetworkData  = 0;
+    SuccessOrExit(error = otThreadSetLinkMode(instance, config));
+
+exit:
+    if (error != OT_ERROR_NONE)
+    {
+        otCliOutputFormat("Initialization failed with: %d, %s\r\n", error, otThreadErrorToString(error));
+    }
+    return;
+}
 
 int main(int argc, char *argv[])
 {
@@ -107,14 +127,9 @@ int main(int argc, char *argv[])
 
     otAppCliInit(instance);
 
-    otLinkSetPollPeriod(instance, SLEEPY_POLL_PERIOD_MS);
+    sleepyInit();
     setNetworkConfiguration(instance);
     otSetStateChangedCallback(instance, handleNetifStateChanged, instance);
-
-    config.mRxOnWhenIdle = true;
-    config.mDeviceType   = 0;
-    config.mNetworkData  = 0;
-    otThreadSetLinkMode(instance, config);
 
     initUdp();
     otIp6SetEnabled(instance, true);
@@ -154,12 +169,13 @@ void otTaskletsSignalPending(otInstance *aInstance)
     sTaskletsPendingSem = true;
 }
 
-/*
+/**
  * Override default network settings, such as panid, so the devices can join a network
  */
 void setNetworkConfiguration(otInstance *aInstance)
 {
     static char          aNetworkName[] = "SleepyEFR32";
+    otError              error;
     otOperationalDataset aDataset;
 
     memset(&aDataset, 0, sizeof(otOperationalDataset));
@@ -167,7 +183,7 @@ void setNetworkConfiguration(otInstance *aInstance)
     /*
      * Fields that can be configured in otOperationDataset to override defaults:
      *     Network Name, Mesh Local Prefix, Extended PAN ID, PAN ID, Delay Timer,
-     *     Channel, Channel Mask Page 0, Network Master Key, PSKc, Security Policy
+     *     Channel, Channel Mask Page 0, Network Key, PSKc, Security Policy
      */
     aDataset.mActiveTimestamp                      = 1;
     aDataset.mComponents.mIsActiveTimestampPresent = true;
@@ -185,11 +201,11 @@ void setNetworkConfiguration(otInstance *aInstance)
     memcpy(aDataset.mExtendedPanId.m8, extPanId, sizeof(aDataset.mExtendedPanId));
     aDataset.mComponents.mIsExtendedPanIdPresent = true;
 
-    /* Set master key to 1234C0DE1AB51234C0DE1AB51234C0DE */
-    uint8_t key[OT_MASTER_KEY_SIZE] = {0x12, 0x34, 0xC0, 0xDE, 0x1A, 0xB5, 0x12, 0x34,
-                                       0xC0, 0xDE, 0x1A, 0xB5, 0x12, 0x34, 0xC0, 0xDE};
-    memcpy(aDataset.mMasterKey.m8, key, sizeof(aDataset.mMasterKey));
-    aDataset.mComponents.mIsMasterKeyPresent = true;
+    /* Set network key to 1234C0DE1AB51234C0DE1AB51234C0DE */
+    uint8_t key[OT_NETWORK_KEY_SIZE] = {0x12, 0x34, 0xC0, 0xDE, 0x1A, 0xB5, 0x12, 0x34,
+                                        0xC0, 0xDE, 0x1A, 0xB5, 0x12, 0x34, 0xC0, 0xDE};
+    memcpy(aDataset.mNetworkKey.m8, key, sizeof(aDataset.mNetworkKey));
+    aDataset.mComponents.mIsNetworkKeyPresent = true;
 
     /* Set Network Name to SleepyEFR32 */
     size_t length = strlen(aNetworkName);
@@ -197,7 +213,13 @@ void setNetworkConfiguration(otInstance *aInstance)
     memcpy(aDataset.mNetworkName.m8, aNetworkName, length);
     aDataset.mComponents.mIsNetworkNamePresent = true;
 
-    otDatasetSetActive(aInstance, &aDataset);
+    /* Set the Active Operational Dataset to this dataset */
+    error = otDatasetSetActive(aInstance, &aDataset);
+    if (error != OT_ERROR_NONE)
+    {
+        otCliOutputFormat("otDatasetSetActive failed with: %d, %s\r\n", error, otThreadErrorToString(error));
+        return;
+    }
 }
 
 void handleNetifStateChanged(uint32_t aFlags, void *aContext)
@@ -215,10 +237,6 @@ void handleNetifStateChanged(uint32_t aFlags, void *aContext)
             break;
 
         case OT_DEVICE_ROLE_CHILD:
-            config.mRxOnWhenIdle = 0;
-            config.mDeviceType   = 0;
-            config.mNetworkData  = 0;
-            otThreadSetLinkMode(instance, config);
             sAllowDeepSleep = false;
             break;
 
@@ -259,36 +277,31 @@ void gpioInit(void (*callback)(uint8_t pin))
     GPIOINT_CallbackRegister(sButtonArray[1].pin, callback);
     GPIO_IntConfig(sButtonArray[0].port, sButtonArray[0].pin, false, true, true);
     GPIO_IntConfig(sButtonArray[1].port, sButtonArray[1].pin, false, true, true);
-
-    BSP_LedsInit();
-    BSP_LedClear(0);
-    BSP_LedClear(1);
 }
 
 void initUdp(void)
 {
     otError    error;
-    otSockAddr sockaddr;
+    otSockAddr bindAddr;
 
-    memset(&sMulticastSockAddr, 0, sizeof sMulticastSockAddr);
-    otIp6AddressFromString(MULTICAST_ADDR, &sMulticastSockAddr.mAddress);
-    sMulticastSockAddr.mPort = MULTICAST_PORT;
+    // Initialize bindAddr
+    memset(&bindAddr, 0, sizeof(bindAddr));
+    bindAddr.mPort = RECV_PORT;
 
-    memset(&sockaddr, 0, sizeof(sockaddr));
-    sockaddr.mPort = RECV_PORT;
-
+    // Open the socket
     error = otUdpOpen(instance, &sMtdSocket, mtdReceiveCallback, NULL);
-
     if (error != OT_ERROR_NONE)
     {
+        otCliOutputFormat("MTD failed to open udp socket with: %d, %s\r\n", error, otThreadErrorToString(error));
         return;
     }
 
-    error = otUdpBind(instance, &sMtdSocket, &sockaddr);
-
+    // Bind to the socket. Close the socket if bind fails.
+    error = otUdpBind(instance, &sMtdSocket, &bindAddr, OT_NETIF_THREAD);
     if (error != OT_ERROR_NONE)
     {
-        otUdpClose(instance, &sMtdSocket);
+        otCliOutputFormat("MTD failed to bind udp socket with: %d, %s\r\n", error, otThreadErrorToString(error));
+        IgnoreReturnValue(otUdpClose(instance, &sMtdSocket));
         return;
     }
 }
@@ -307,76 +320,82 @@ void buttonCallback(uint8_t pin)
 
 void applicationTick(void)
 {
-    otError          error = 0;
+    otLinkModeConfig config;
     otMessageInfo    messageInfo;
     otMessage *      message = NULL;
-    char *           payload = MTD_MESSAGE;
-    otLinkModeConfig config;
+    const char *     payload = MTD_MESSAGE;
 
-    if (sRxOnIdleButtonPressed == true)
+    // Check for BTN0 button press
+    if (sRxOnIdleButtonPressed)
     {
         sRxOnIdleButtonPressed = false;
         sAllowDeepSleep        = !sAllowDeepSleep;
         config.mRxOnWhenIdle   = !sAllowDeepSleep;
         config.mDeviceType     = 0;
         config.mNetworkData    = 0;
-        otThreadSetLinkMode(instance, config);
+        SuccessOrExit(otThreadSetLinkMode(instance, config));
+
+#if (defined(SL_CATALOG_KERNEL_PRESENT) && defined(SL_CATALOG_POWER_MANAGER_PRESENT))
+        if (sAllowSleep)
+        {
+            sl_power_manager_remove_em_requirement(SL_POWER_MANAGER_EM1);
+        }
+        else
+        {
+            sl_power_manager_add_em_requirement(SL_POWER_MANAGER_EM1);
+        }
+#endif
     }
 
-    if (sButtonPressed == true)
+    // Check for BTN1 button press
+    if (sButtonPressed)
     {
         sButtonPressed = false;
 
+        // Get a message buffer
+        VerifyOrExit((message = otUdpNewMessage(instance, NULL)) != NULL);
+
+        // Setup messageInfo
         memset(&messageInfo, 0, sizeof(messageInfo));
-        memcpy(&messageInfo.mPeerAddr, &sMulticastSockAddr.mAddress, sizeof messageInfo.mPeerAddr);
-        messageInfo.mPeerPort = sMulticastSockAddr.mPort;
+        SuccessOrExit(otIp6AddressFromString(MULTICAST_ADDR, &messageInfo.mPeerAddr));
+        messageInfo.mPeerPort = MULTICAST_PORT;
 
-        message = otUdpNewMessage(instance, NULL);
+        // Append the MTD_MESSAGE payload to the message buffer
+        SuccessOrExit(otMessageAppend(message, payload, (uint16_t)strlen(payload)));
 
-        if (message != NULL)
-        {
-            error = otMessageAppend(message, payload, (uint16_t)strlen(payload));
+        // Send the button press message
+        SuccessOrExit(otUdpSend(instance, &sMtdSocket, message, &messageInfo));
 
-            if (error == OT_ERROR_NONE)
-            {
-                error = otUdpSend(instance, &sMtdSocket, message, &messageInfo);
-
-                if (error == OT_ERROR_NONE)
-                {
-                    return;
-                }
-            }
-        }
-
-        if (message != NULL)
-        {
-            otMessageFree(message);
-        }
+        // Set message pointer to NULL so it doesn't get free'd by this function.
+        // otUdpSend() executing successfully means OpenThread has taken ownership
+        // of the message buffer.
+        message = NULL;
     }
+
+exit:
+    if (message != NULL)
+    {
+        otMessageFree(message);
+    }
+    return;
 }
 
 void mtdReceiveCallback(void *aContext, otMessage *aMessage, const otMessageInfo *aMessageInfo)
 {
     OT_UNUSED_VARIABLE(aContext);
-    OT_UNUSED_VARIABLE(aMessage);
     OT_UNUSED_VARIABLE(aMessageInfo);
-    uint8_t buf[1500];
+    uint8_t buf[64];
     int     length;
 
+    // Read the received message's payload
     length      = otMessageRead(aMessage, otMessageGetOffset(aMessage), buf, sizeof(buf) - 1);
     buf[length] = '\0';
 
-    if (strcmp((char *)buf, FTD_MESSAGE) == 0)
-    {
-        sLedOn = !sLedOn;
+    // Check that the payload matches FTD_MESSAGE
+    VerifyOrExit(strncmp((char *)buf, FTD_MESSAGE, sizeof(FTD_MESSAGE)) == 0);
 
-        if (sLedOn)
-        {
-            BSP_LedSet(0);
-        }
-        else
-        {
-            BSP_LedClear(0);
-        }
-    }
+    otCliOutputFormat("Message Received: %s\r\n", buf);
+
+exit:
+    return;
 }

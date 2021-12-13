@@ -4,6 +4,7 @@
 
 - [OpenThread on EFR32](#openthread-on-efr32)
   - [Table of Contents](#table-of-contents)
+  - [Matching versions](#matching-versions)
   - [Prerequisites](#prerequisites)
     - [Toolchain](#toolchain)
     - [Flashing and debugging tools](#flashing-and-debugging-tools)
@@ -28,6 +29,14 @@ This directory contains example platform drivers for the [Silicon Labs EFR32MG][
 The example platform drivers are intended to present the minimal code necessary to support OpenThread. [EFR32MG][efr32mg] has rich memory and peripheral resources which can support all OpenThread capabilities.
 
 See [EFR32 Sleepy Demo Example](../examples/sleepy-demo/README.md) for instructions for an example that uses the low-energy modes of the EFR32MG when running as a Sleepy End Device.
+
+<a name="matching-versions"/>
+
+## Matching versions
+
+When using this repo to generate a solution that requires two different projects, such as an RCP & OTBR, make sure they are relying on the same OpenThread version to ensure maximum compatibility. You can check which commit this repo relies upon in the "openthread" submodule (in the root of this repo).
+
+If your OTBR project was generated using the Silabs GSDK / Simplicity Studio, we recommend to also use it to generate the RCP project and not this repo. This will mitigate potential incompatibility issues due to mismatched OpenThread versions.
 
 <a name="prerequisites"/>
 
@@ -188,10 +197,10 @@ $ JLinkExe
    ipaddr
    keysequence
    leaderweight
-   masterkey
    mode
    netdata register
    networkidtimeout
+   networkkey
    networkname
    panid
    ping
@@ -217,7 +226,7 @@ $ JLinkExe
    Channel Mask: 0x07fff800
    Ext PAN ID: d63e8e3e495ebbc3
    Mesh Local Prefix: fd3d:b50b:f96d:722d::/64
-   Master Key: dfd34f0f05cad978ec4e32b0413038ff
+   Network Key: dfd34f0f05cad978ec4e32b0413038ff
    Network Name: OpenThread-8f28
    PAN ID: 0x8f28
    PSKc: c23a76e98f1a6483639b1ac1271e2e27
@@ -240,7 +249,7 @@ $ JLinkExe
 4. Open terminal to second device `/dev/ttyACM1` (serial port settings: 115200 8-N-1) and attach it to the Thread network as a Router.
 
    ```bash
-   > dataset masterkey dfd34f0f05cad978ec4e32b0413038ff
+   > dataset networkkey dfd34f0f05cad978ec4e32b0413038ff
    Done
    > dataset commit active
    Done
